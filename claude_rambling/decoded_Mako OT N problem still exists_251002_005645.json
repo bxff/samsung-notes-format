@@ -1,0 +1,502 @@
+{
+  "metadata": {
+    "created_date": "2025-10-02 00:56:45",
+    "title": "Mako OT N problem still exists",
+    "uuids": [
+      "99a66d6e-46c4-11f0-95ef-433493b81192",
+      "99a672c8-46c4-11f0-89bf-5338063ffb1a"
+    ]
+  },
+  "text_content": [
+    {
+      "type": "utf16",
+      "content": "OT N problem still exists.",
+      "offset": "0x140"
+    },
+    {
+      "type": "utf16",
+      "content": ";0;100;",
+      "offset": "0x360"
+    },
+    {
+      "type": "utf16",
+      "content": "3com.samsung.android.sdk.pen.pen.preload.FountainPen",
+      "offset": "0x360"
+    },
+    {
+      "type": "utf16",
+      "content": "3com.samsung.android.sdk.pen.pen.preload.FountainPen",
+      "offset": "0x360"
+    },
+    {
+      "type": "utf16_scanned",
+      "content": "Mako OT N problem still exists.",
+      "offset": "0x139",
+      "end_offset": "0x177"
+    }
+  ],
+  "strokes": [
+    {
+      "type": "sequential",
+      "coordinates": [
+        [
+          1025,
+          260
+        ],
+        [
+          32,
+          1024
+        ]
+      ],
+      "point_count": 2,
+      "start_offset": "0x280",
+      "end_offset": "0x288",
+      "data_span": 8,
+      "confidence": "high"
+    },
+    {
+      "type": "pattern_based",
+      "coordinates": [
+        [
+          63,
+          63
+        ],
+        [
+          512,
+          512
+        ]
+      ],
+      "point_count": 2,
+      "region_offset": "0x460",
+      "confidence": "high"
+    },
+    {
+      "type": "region_based",
+      "coordinates": [
+        [
+          512,
+          447
+        ],
+        [
+          64,
+          15
+        ]
+      ],
+      "point_count": 2,
+      "region_start": "0x1c0",
+      "region_end": "0x200",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<IIII",
+      "coordinates": [
+        [
+          32,
+          4000
+        ],
+        [
+          383,
+          113
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x34",
+      "format": "<IIII",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          77,
+          97
+        ],
+        [
+          107,
+          111
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x139",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          32,
+          79
+        ],
+        [
+          84,
+          32
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x141",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          78,
+          32
+        ],
+        [
+          112,
+          114
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x149",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          111,
+          98
+        ],
+        [
+          108,
+          101
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x151",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          109,
+          32
+        ],
+        [
+          115,
+          116
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x159",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          105,
+          108
+        ],
+        [
+          108,
+          32
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x161",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          101,
+          120
+        ],
+        [
+          105,
+          115
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x169",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          49,
+          56
+        ],
+        [
+          59,
+          48
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x35d",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          59,
+          49
+        ],
+        [
+          48,
+          48
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x365",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          51,
+          99
+        ],
+        [
+          111,
+          109
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x373",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          46,
+          115
+        ],
+        [
+          97,
+          109
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x37b",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          115,
+          117
+        ],
+        [
+          110,
+          103
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x383",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          46,
+          97
+        ],
+        [
+          110,
+          100
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x38b",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          114,
+          111
+        ],
+        [
+          105,
+          100
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x393",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          46,
+          115
+        ],
+        [
+          100,
+          107
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x39b",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          46,
+          112
+        ],
+        [
+          101,
+          110
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x3a3",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          46,
+          112
+        ],
+        [
+          114,
+          101
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x3b3",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          108,
+          111
+        ],
+        [
+          97,
+          100
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x3bb",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          46,
+          70
+        ],
+        [
+          111,
+          117
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x3c3",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          110,
+          116
+        ],
+        [
+          97,
+          105
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x3cb",
+      "format": "<HHHH",
+      "confidence": "medium"
+    },
+    {
+      "type": "advanced_<HHHH",
+      "coordinates": [
+        [
+          110,
+          80
+        ],
+        [
+          101,
+          110
+        ]
+      ],
+      "point_count": 2,
+      "offset": "0x3d3",
+      "format": "<HHHH",
+      "confidence": "medium"
+    }
+  ],
+  "format_info": {
+    "magic": {
+      "offset": "0x0",
+      "value": 833,
+      "raw": "41030000"
+    },
+    "version": {
+      "offset": "0x4",
+      "value": 2052,
+      "raw": "04080000"
+    },
+    "data_offset": {
+      "offset": "0x28",
+      "value": 1440,
+      "raw": "a0050000"
+    },
+    "size1": {
+      "offset": "0x2c",
+      "value": 4072,
+      "raw": "e80f0000"
+    },
+    "text_offset": {
+      "offset": "0x34",
+      "value": 32,
+      "raw": "20000000"
+    },
+    "text_size": {
+      "offset": "0x38",
+      "value": 4000,
+      "raw": "a00f0000"
+    },
+    "uuid_offset": {
+      "offset": "0x50",
+      "value": 262144000,
+      "raw": "0000a00f"
+    }
+  }
+}
