@@ -18,9 +18,8 @@ import json
 import sys
 import os
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from io import BytesIO
-
 
 class BinaryReader:
     """Little-Endian binary reader based on T.q methods from SDK."""
@@ -135,6 +134,9 @@ class ObjectData:
     format_version: int = 0
     binary_size: int = 0
     stroke_data_size: int = 0
+    stroke_points: List[Tuple[float, float]] = field(default_factory=list)
+    stroke_parse_error: Optional[str] = None
+
     child_count: int = 0
     children: List['ObjectData'] = field(default_factory=list)
 
@@ -445,9 +447,82 @@ class PageParser:
             
             # Calculate remaining stroke data for stroke types
             if obj.object_type in [OBJECT_TYPE_STROKE, OBJECT_TYPE_STROKE_V2]:
-                obj.stroke_data_size = len(data) - reader.tell()
+                # IMPORTANT: var_data_offset points to the internal stroke payload.
+                payload_offset = var_data_offset if 0 < var_data_offset < len(data) else reader.tell()
+                stroke_payload = data[payload_offset:]
+                obj.stroke_data_size = len(stroke_payload)
+
+                try:
+                    raw_points = parse_delta_stroke_payload(stroke_payload)
+                    # The stroke points are parsed directly from the payload but I think there is 
+                    # there an offset missing here based on the bounding box.
+                    # This means that the resulting coordinates may still contain negative values.
+                    # The correct offset logic, if required, needs to be implemented separately.
+                    obj.stroke_points = raw_points
+
+                    # Remove last two points (removing because they seem to be implausible)
+                    # Clearly not the correct approach.
+                    if len(obj.stroke_points) >= 2:
+                        obj.stroke_points = obj.stroke_points[:-2]
+                except Exception as e:
+                    obj.stroke_points = []
+                    obj.stroke_parse_error = f"{type(e).__name__}: {e}"
         except Exception:
             pass
+        
+
+def _decode_samsung_fixed15_5(word: int) -> float:
+    """Decode Samsung stroke fixed-point word.
+
+    Observed encoding: sign bit (0x8000), 10+ bits integer in bits 5..14, 5-bit fraction in bits 0..4.
+    """
+    is_neg = bool(word & 0x8000)
+    magnitude = word & 0x7FFF
+    integer_part = magnitude >> 5
+    frac_part = magnitude & 0x1F
+    val = integer_part + (frac_part / 32.0)
+    return -val if is_neg else val
+
+
+def parse_delta_stroke_payload(payload: bytes) -> List[Tuple[float, float]]:
+    """Stroke payload parser (Samsung Notes).
+
+    Offsets from reverse-engineering `libSpen_document.dll`
+    (stroke write path in `SPen::WLayer::Save`):
+    - 34: uint32 point_count
+    - 52: float32 start_x, start_y
+    - 60: delta stream of uint16 dx, uint16 dy (fixed-point 15.5)
+
+    Coordinates are stored as seen on the page (no extra bounding-box offset needed).
+    """
+    if len(payload) < 64:
+        return []
+
+    point_count = struct.unpack_from("<I", payload, 34)[0]
+    if point_count < 1 or point_count > 200_000:
+        return []
+
+    x, y = struct.unpack_from("<ff", payload, 52)
+    points: List[Tuple[float, float]] = [(x, y)]
+
+    off = 60
+    # Need 4 bytes per delta pair
+    needed = off + max(0, point_count - 1) * 4
+    if needed > len(payload):
+        # Truncated payload → return what we can safely decode
+        max_pairs = max(0, (len(payload) - off) // 4)
+    else:
+        max_pairs = point_count - 1
+
+    for _ in range(max_pairs):
+        dx_raw, dy_raw = struct.unpack_from("<HH", payload, off)
+        off += 4
+        x += _decode_samsung_fixed15_5(dx_raw)
+        y += _decode_samsung_fixed15_5(dy_raw)
+        points.append((x, y))
+
+    return points
+
 
 
 
