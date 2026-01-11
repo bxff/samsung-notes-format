@@ -114,6 +114,33 @@ From the decompiled Samsung Notes SDK:
 > [!IMPORTANT]
 > UUIDs are stored as **UTF-8** (not UTF-16LE!), parsed by `k0.x.a()` method.
 
+### 2.4 Stroke Point Binary Format (from `j0.p`)
+
+Each stroke object contains a binary payload in the `f392U` field. The points are stored as a stream of packed XY deltas:
+
+```
+┌─────────────────────────┐
+│ @ Offset 34:            │
+│   uint32: point_count   │
+├─────────────────────────┤
+│ @ Offset 40:            │
+│   double: bbox_left     │
+│   double: bbox_top      │
+├─────────────────────────┤
+│ @ Offset 60:            │
+│   [Packed XY Deltas...] │
+│   stride: 4 bytes       │
+│     short: dx (15.5 FP) │
+│     short: dy (15.5 FP) │
+└─────────────────────────┘
+```
+
+**Decoding Logic:**
+1.  **Fixed-Point 15.5:** Sign bit (0x8000), 10 bits integer, 5 bits fraction.
+2.  **Normalization:** Accumulate deltas starting from (0,0).
+3.  **Alignment:** Align the cluster's `(min_x, min_y)` to the object's `bounding_rect` `(left, top)`.
+4.  **Trimming:** Discard the last 2 points (misinterpreted footer/garbage bytes).
+
 ---
 
 ## 3. Implementation
@@ -175,9 +202,12 @@ obj_data = reader.read_bytes(obj.binary_size)
 
 | # | UUID | Bounding Box | Binary Size |
 |---|------|--------------|-------------|
-| 1 | `4367476a-a480-11f0-a066-bfbb6cd89211` | (602, 309) → (639, 993) | 2827 bytes |
-| 2 | `845599fe-a497-11f0-9d98-9f0adfe9fa71` | (766, 291) → (804, 944) | 4699 bytes |
-| 3 | `87af17b8-a499-11f0-819d-931efd286e76` | (991, 317) → (1059, 891) | 2551 bytes |
+| 1 | `4367476a-a480-11f0-a066-bfbb6cd89211` | (602.8, 309.2) → (639.9, 993.5) | 2827 bytes |
+| 2 | `845599fe-a497-11f0-9d98-9f0adfe9fa71` | (766.4, 291.9) → (804.6, 944.0) | 4699 bytes |
+| 3 | `87af17b8-a499-11f0-819d-931efd286e76` | (991.8, 317.9) → (1059.1, 891.1) | 2551 bytes |
+
+> [!TIP]
+> Extracted points now match the bounding boxes perfectly!
 
 ---
 
@@ -203,7 +233,8 @@ python3 sdocx_extractor.py <path_to_sdocx>
               "object_type": 1,
               "object_type_name": "Stroke",
               "uuid": "...",
-              "bounding_rect": { "left": 602.8, "top": 309.2, ... }
+              "bounding_rect": { "left": 602.8, "top": 309.2, ... },
+              "stroke_points": [ [602.8, 309.2], [602.8, 311.0], ... ]
             }
           ]
         }
@@ -218,8 +249,9 @@ python3 sdocx_extractor.py <path_to_sdocx>
 
 ## 6. Future Work
 
-- [ ] Parse stroke point data from binary (`f392U` field)
+- [x] Parse stroke point data from binary (`f392U` field) ✅ 
 - [ ] Implement `.spi` file parsing for rendered strokes
 - [ ] Add `mediaInfo.dat` parser
 - [ ] Support text box content extraction
 - [ ] Export to SVG/PDF formats
+

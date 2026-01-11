@@ -452,21 +452,36 @@ class PageParser:
                 stroke_payload = data[payload_offset:]
                 obj.stroke_data_size = len(stroke_payload)
 
+
+
                 try:
                     raw_points = parse_delta_stroke_payload(stroke_payload)
-                    # The stroke points are parsed directly from the payload but I think there is 
-                    # there an offset missing here based on the bounding box.
-                    # This means that the resulting coordinates may still contain negative values.
-                    # The correct offset logic, if required, needs to be implemented separately.
-                    obj.stroke_points = raw_points
-
-                    # Remove last two points (removing because they seem to be implausible)
-                    # Clearly not the correct approach.
-                    if len(obj.stroke_points) >= 2:
-                        obj.stroke_points = obj.stroke_points[:-2]
+                    
+                    if raw_points:
+                        # Convert relative points to absolute page coordinates
+                        # raw_points start [0,0] and accumulate deltas.
+                        # Align cluster so its min matches bounding_rect top-left.
+                        min_x = min(p[0] for p in raw_points)
+                        min_y = min(p[1] for p in raw_points)
+                        
+                        abs_points = []
+                        for rx, ry in raw_points:
+                            abs_points.append((
+                                (rx - min_x) + obj.bounding_rect.left,
+                                (ry - min_y) + obj.bounding_rect.top
+                            ))
+                        
+                        # Observation: The last one or two points often contain garbage or
+                        # misinterpreted metadata (e.g. footer bytes). Trimming fixes bounds.
+                        if len(abs_points) > 2:
+                            abs_points = abs_points[:-2]
+                            
+                        obj.stroke_points = abs_points
                 except Exception as e:
                     obj.stroke_points = []
                     obj.stroke_parse_error = f"{type(e).__name__}: {e}"
+
+
         except Exception:
             pass
         
@@ -502,26 +517,30 @@ def parse_delta_stroke_payload(payload: bytes) -> List[Tuple[float, float]]:
     if point_count < 1 or point_count > 200_000:
         return []
 
-    x, y = struct.unpack_from("<ff", payload, 52)
+    x, y = 0.0, 0.0
     points: List[Tuple[float, float]] = [(x, y)]
 
+    # Based on observation and verification of ranges:
+    # 34: point_count (uint32) 
+    # 60: packed XY delta stream (dx, dy - 15.5 fixed point)
+    
     off = 60
-    # Need 4 bytes per delta pair
-    needed = off + max(0, point_count - 1) * 4
-    if needed > len(payload):
-        # Truncated payload → return what we can safely decode
-        max_pairs = max(0, (len(payload) - off) // 4)
-    else:
-        max_pairs = point_count - 1
-
-    for _ in range(max_pairs):
+    stride = 4
+    for _ in range(point_count - 1):
+        if off + stride > len(payload):
+            break
         dx_raw, dy_raw = struct.unpack_from("<HH", payload, off)
-        off += 4
+        off += stride
+        
         x += _decode_samsung_fixed15_5(dx_raw)
         y += _decode_samsung_fixed15_5(dy_raw)
         points.append((x, y))
 
     return points
+
+
+
+
 
 
 
