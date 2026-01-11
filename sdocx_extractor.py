@@ -471,12 +471,12 @@ class PageParser:
                                 (ry - min_y) + obj.bounding_rect.top
                             ))
                         
-                        # Observation: The last one or two points often contain garbage or
-                        # misinterpreted metadata (e.g. footer bytes). Trimming fixes bounds.
-                        if len(abs_points) > 2:
-                            abs_points = abs_points[:-2]
+                        # DISABLED: Trimming was hiding real data
+                        # if len(abs_points) > 2:
+                        #     abs_points = abs_points[:-2]
                             
                         obj.stroke_points = abs_points
+
                 except Exception as e:
                     obj.stroke_points = []
                     obj.stroke_parse_error = f"{type(e).__name__}: {e}"
@@ -522,10 +522,12 @@ def parse_delta_stroke_payload(payload: bytes) -> List[Tuple[float, float]]:
 
     # Based on observation and verification of ranges:
     # 34: point_count (uint32) 
-    # 60: packed XY delta stream (dx, dy - 15.5 fixed point)
+    # 60: packed XY delta stream
+    # Using 4-byte stride: gives best overall bounding box match across all strokes
+    # SDK f391Z=12 may refer to a different encoding layer or include pressure/other data
     
     off = 60
-    stride = 4
+    stride = 4  # 4-byte stride (dx, dy packed) gives best bbox match
     for _ in range(point_count - 1):
         if off + stride > len(payload):
             break
@@ -537,6 +539,11 @@ def parse_delta_stroke_payload(payload: bytes) -> List[Tuple[float, float]]:
         points.append((x, y))
 
     return points
+
+
+
+
+
 
 
 
