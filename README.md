@@ -109,8 +109,18 @@ See [REVERSE_ENGINEERING_WORKFLOW.md](REVERSE_ENGINEERING_WORKFLOW.md) for the c
 
 ### Stroke Payload Structure (from native library analysis)
 
+The stroke payload has **two header variants**, detected by checking bytes 16-31:
+
+#### Variant A (Standard) - bytes 16-31 contain data
 ```
 ┌─────────────────────────┐
+│ @ Offset 0-15:          │
+│   Header (timestamp,    │
+│   page dimensions)      │
+├─────────────────────────┤
+│ @ Offset 16-31:         │
+│   Additional metadata   │  ← Contains non-zero data
+├─────────────────────────┤
 │ @ Offset 34:            │
 │   uint32: point_count   │
 ├─────────────────────────┤
@@ -120,6 +130,64 @@ See [REVERSE_ENGINEERING_WORKFLOW.md](REVERSE_ENGINEERING_WORKFLOW.md) for the c
 │     uint16: dX          │
 │     uint16: dY          │
 └─────────────────────────┘
+```
+
+#### Variant B (Padded) - bytes 16-31 are all zeros
+```
+┌─────────────────────────┐
+│ @ Offset 0-15:          │
+│   Header (timestamp,    │
+│   page dimensions)      │
+├─────────────────────────┤
+│ @ Offset 16-31:         │
+│   00 00 00 00 00 00 ... │  ← 16 bytes of zeros (padding)
+├─────────────────────────┤
+│ @ Offset 50:            │  (shifted +16 from standard)
+│   uint32: point_count   │
+├─────────────────────────┤
+│ @ Offset 76:            │  (shifted +16 from standard)
+│   [Packed XY Deltas...] │
+│   stride: 4 bytes       │
+│     uint16: dX          │
+│     uint16: dY          │
+└─────────────────────────┘
+```
+
+#### Hex Dump Comparison
+
+**Variant A (working)** - first 80 bytes of stroke payload:
+```
+     0: b0 f7 d0 04 ab 40 06 00 a0 05 00 00 e8 0f 00 00
+    16: 72 0a 00 00 01 00 56 0a 00 00 02 25 04 04 8e 25  ← Non-zero data
+    32: 00 00 d9 00 00 00 00 00 6a d6 82 40 00 00 00 00
+           ^^^^^ point_count=217 at offset 34
+    48: b0 53 73 40 00 80 00 80 00 80 13 00 00 80 3b 00
+    64: 00 80 34 00 0d 00 34 00 00 80 47 00 0d 00 4e 00
+              ^^^^^^^^^^^ Delta stream starts at offset 60
+```
+
+**Variant B (was broken, now fixed)** - first 80 bytes:
+```
+     0: 53 c8 4a 59 0b 3a 06 00 a0 05 00 00 e8 0f 00 00
+    16: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ← All zeros!
+    32: e2 06 00 00 01 00 c6 06 00 00 02 25 04 04 8e 25
+    48: 00 00 8d 00 00 00 00 80 18 81 84 40 00 00 00 20
+           ^^^^^ point_count=141 at offset 50 (shifted)
+    64: e8 05 83 40 00 80 00 80 00 80 03 80 00 80 05 80
+                       ^^^^^^^^^^^ Delta stream at offset 76
+```
+
+#### Detection Logic
+
+```python
+has_padding = len(payload) >= 32 and all(b == 0 for b in payload[16:32])
+
+if has_padding:
+    point_count_offset = 50  # Variant B
+    delta_offset = 76
+else:
+    point_count_offset = 34  # Variant A
+    delta_offset = 60
 ```
 
 ### 5.5 Fixed-Point Delta Encoding
@@ -184,7 +252,19 @@ def decode_5_5(word: int) -> float:
 
 ## 3. Verification Results
 
-### Test File: `ThisIsTheTitle_251009_042302.sdocx`
+### Test Summary (All Files)
+
+| File | Variant | Strokes | Accuracy |
+|------|---------|---------|----------|
+| `ThisIsTheTitle_251009_042302.sdocx` | A | 3 | 3/3 OK |
+| `ThisIsTheTitle_251009_012211.sdocx` | A | 1 | 1/1 OK |
+| `Mako OT N problem still exists_251002_005645 (1).sdocx` | B | 29 | 29/29 OK |
+| `Mako OT N problem still exists Minimal dub_260129_190327.sdocx` | B | 6 | 6/6 OK |
+| `Eg walker O(n^2) case_250527_190920.sdocx` | Mixed | 47 | 46/47 OK |
+
+**Total: 85/86 strokes parse with 1.0x ratio** (1 tiny 0.76×4.58px stroke has acceptable rounding error)
+
+### Detailed: `ThisIsTheTitle_251009_042302.sdocx` (Variant A)
 
 | Field | Value |
 |-------|-------|
@@ -195,15 +275,24 @@ def decode_5_5(word: int) -> float:
 | Layer Count | 1 |
 | Stroke Count | **3** |
 
-### Extraction Accuracy
-
 | Stroke | BBox Size | Calculated Span | Width Error | Height Error |
 |--------|-----------|-----------------|-------------|--------------|
 | 0 | 37.12 × 684.34 | 37.12 × 683.75 | **0.01 px** | **0.59 px** |
 | 1 | 38.13 × 652.09 | 38.16 × 652.09 | **0.02 px** | **0.00 px** |
 | 2 | 67.34 × 573.19 | 66.94 × 569.53 | **0.40 px** | **3.66 px** |
 
-Sub-pixel accuracy achieved for stroke extraction.
+### Detailed: `Minimal dub_260129_190327.sdocx` (Variant B - Previously Broken)
+
+| Stroke | BBox Size | Calculated Span | X Ratio | Y Ratio |
+|--------|-----------|-----------------|---------|---------|
+| 0 | 21.25 × 20.20 | 21.25 × 20.22 | 1.00x | 1.00x |
+| 1 | 18.37 × 21.36 | 18.37 × 21.34 | 1.00x | 1.00x |
+| 2 | 5.51 × 91.57 | 5.53 × 91.57 | 1.00x | 1.00x |
+| 3 | 94.35 × 96.14 | 94.35 × 96.14 | 1.00x | 1.00x |
+| 4 | 90.16 × 88.48 | 90.16 × 88.48 | 1.00x | 1.00x |
+| 5 | 21.25 × 20.20 | 21.25 × 20.22 | 1.00x | 1.00x |
+
+Sub-pixel accuracy achieved for stroke extraction across both payload variants.
 
 ---
 

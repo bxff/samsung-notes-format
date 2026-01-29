@@ -62,11 +62,73 @@ Bits 0-4:  Fractional part (/32.0)
 ```
 
 ### Stroke Payload Layout
+
+The payload has **two header variants**, detected by checking bytes 16-31:
+
+**Variant A (Standard)** - bytes 16-31 contain data:
 ```
-Offset 34: uint32 point_count
-Offset 60: Delta stream (dX:uint16, dY:uint16 pairs)
-Last 2 points: Termination marker (+12.0 Y delta) - trim these
+Offset 0-15:  Header (timestamp, page dimensions 1440x4072)
+Offset 16-31: Additional metadata (non-zero)
+Offset 34:    uint32 point_count
+Offset 60:    Delta stream (dX:uint16, dY:uint16 pairs)
 ```
+
+**Variant B (Padded)** - bytes 16-31 are all zeros:
+```
+Offset 0-15:  Header (timestamp, page dimensions)
+Offset 16-31: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ← Padding
+Offset 50:    uint32 point_count (shifted +16)
+Offset 76:    Delta stream (shifted +16)
+```
+
+**Hex dump examples:**
+
+Variant A (standard):
+```
+     0: b0 f7 d0 04 ab 40 06 00 a0 05 00 00 e8 0f 00 00
+    16: 72 0a 00 00 01 00 56 0a 00 00 02 25 04 04 8e 25  ← Non-zero
+    32: 00 00 d9 00 00 00 ...
+           ^^^^^ point_count=217 at offset 34
+```
+
+Variant B (padded):
+```
+     0: 53 c8 4a 59 0b 3a 06 00 a0 05 00 00 e8 0f 00 00
+    16: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ← All zeros
+    32: e2 06 00 00 01 00 c6 06 00 00 02 25 04 04 8e 25
+    48: 00 00 8d 00 00 00 ...
+           ^^^^^ point_count=141 at offset 50
+```
+
+**Detection code:**
+```python
+has_padding = all(b == 0 for b in payload[16:32])
+point_count_offset = 50 if has_padding else 34
+delta_offset = 76 if has_padding else 60
+```
+
+Last 2 points: Termination marker (large +Y delta like +25.0) - trim these
+
+### Debugging Stroke Parsing Issues
+
+If strokes render incorrectly (zigzag patterns, wrong scale):
+
+1. **Check error ratio**: Compare decoded span to bounding box
+   ```python
+   xs = [p[0] for p in points]
+   ys = [p[1] for p in points]
+   span_x, span_y = max(xs) - min(xs), max(ys) - min(ys)
+   expected_x, expected_y = bbox.right - bbox.left, bbox.bottom - bbox.top
+   ratio_x, ratio_y = span_x / expected_x, span_y / expected_y
+   # Should be ~1.0, if 2-10x then offsets are wrong
+   ```
+
+2. **Dump payload bytes 16-31** to detect variant:
+   ```python
+   print(payload[16:32].hex())  # All zeros = Variant B
+   ```
+
+3. **Verify point_count is reasonable** (usually 50-500, not 65536)
 
 ## Commands
 

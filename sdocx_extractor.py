@@ -569,34 +569,49 @@ def parse_delta_stroke_payload(payload: bytes) -> List[Tuple[float, float]]:
 
     Discovered through reverse-engineering libSPenModel.so (sm_RestoreStroke):
 
-    Payload structure:
+    Payload structure has two variants based on header padding:
+
+    Variant A (standard - bytes 16-31 contain data):
     - Offset 34: uint32 point_count
     - Offset 60: Delta stream (dX:uint16, dY:uint16 pairs)
+
+    Variant B (padded - bytes 16-31 are all zeros):
+    - Offset 50: uint32 point_count (shifted by 16 bytes)
+    - Offset 76: Delta stream (shifted by 16 bytes)
 
     Delta encoding uses 5.5 fixed-point format (from SIMD path):
     - Bits 0-4: Fractional part (divide by 32)
     - Bits 5-9: Integer part (range 0-31)
     - Bit 15: Sign bit
 
-    The last 2 points are a termination marker (+12.0 Y delta) and should be trimmed.
+    The last 2 points are a termination marker (large Y delta) and should be trimmed.
     """
     if len(payload) < 64:
         return []
 
-    point_count = struct.unpack_from("<I", payload, 34)[0]
+    # Detect header variant by checking if bytes 16-31 are all zeros
+    has_padding = len(payload) >= 32 and all(b == 0 for b in payload[16:32])
+
+    if has_padding:
+        # Variant B: 16-byte padding shifts all offsets
+        point_count_offset = 50
+        delta_offset = 76
+    else:
+        # Variant A: standard offsets
+        point_count_offset = 34
+        delta_offset = 60
+
+    if len(payload) < delta_offset + 4:
+        return []
+
+    point_count = struct.unpack_from("<I", payload, point_count_offset)[0]
     if point_count < 1 or point_count > 200_000:
         return []
 
     x, y = 0.0, 0.0
     points: List[Tuple[float, float]] = [(x, y)]
 
-    # Based on observation and verification of ranges:
-    # 34: point_count (uint32)
-    # 60: packed XY delta stream
-    # Using 4-byte stride: gives best overall bounding box match across all strokes
-    # SDK f391Z=12 may refer to a different encoding layer or include pressure/other data
-
-    off = 60
+    off = delta_offset
     stride = 4  # 4-byte stride: (dX, dY) packed as uint16 pairs
     for _ in range(point_count - 1):
         if off + stride > len(payload):
