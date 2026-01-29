@@ -3,13 +3,28 @@
 Samsung Notes SDOCX Data Extractor
 
 Extracts all data from Samsung Notes .sdocx files using the Modern Format (Little-Endian).
+
+Key Features:
+- Parses note metadata (title, dimensions, timestamps)
+- Extracts handwritten stroke data with accurate coordinates
+- Uses 5.5 fixed-point delta decoding (discovered from libSPenModel.so)
+
+Usage:
+    python3 sdocx_extractor.py <path_to_sdocx>
+
+Output:
+    JSON with metadata, pages, layers, and stroke points
+
 Based on decompiled SDK analysis of classes:
 - T.q (I/O primitives)
-- g0.h (WNote - note.note)  
+- g0.h (WNote - note.note)
 - g0.u (Page - .page files)
 - g0.C1316b (Layer)
 - j0.b (ObjectBase)
 - j0.p (ObjectStroke)
+
+And native library reverse engineering:
+- libSPenModel.so (sm_RestoreStroke, sm_ShortToFloatDelta)
 """
 
 import struct
@@ -21,50 +36,51 @@ from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Optional, Any, Tuple
 from io import BytesIO
 
+
 class BinaryReader:
     """Little-Endian binary reader based on T.q methods from SDK."""
-    
+
     def __init__(self, data: bytes):
         self.data = data
         self.pos = 0
-    
+
     def seek(self, pos: int):
         self.pos = pos
-    
+
     def skip(self, n: int):
         self.pos += n
-    
+
     def tell(self) -> int:
         return self.pos
-    
+
     def remaining(self) -> int:
         return len(self.data) - self.pos
-    
+
     def read_bytes(self, n: int) -> bytes:
         if self.pos + n > len(self.data):
             raise IndexError(f"Cannot read {n} bytes at position {self.pos}")
-        result = self.data[self.pos:self.pos + n]
+        result = self.data[self.pos : self.pos + n]
         self.pos += n
         return result
-    
+
     def read_int32(self) -> int:
         """T.q.P() - Little-endian signed int32"""
-        return struct.unpack('<i', self.read_bytes(4))[0]
-    
+        return struct.unpack("<i", self.read_bytes(4))[0]
+
     def read_int64(self) -> int:
         """T.q.Q() - Little-endian signed int64"""
-        return struct.unpack('<q', self.read_bytes(8))[0]
-    
+        return struct.unpack("<q", self.read_bytes(8))[0]
+
     def read_short(self) -> int:
         """T.q.S() - Little-endian signed short"""
-        return struct.unpack('<h', self.read_bytes(2))[0]
-    
+        return struct.unpack("<h", self.read_bytes(2))[0]
+
     def read_byte(self) -> int:
         return self.read_bytes(1)[0]
-    
+
     def read_double(self) -> float:
-        return struct.unpack('<d', self.read_bytes(8))[0]
-    
+        return struct.unpack("<d", self.read_bytes(8))[0]
+
     def read_string(self) -> Optional[str]:
         """T.q.U() - UTF-16LE string with short length prefix"""
         if self.remaining() < 2:
@@ -76,14 +92,13 @@ class BinaryReader:
             return None
         chars = []
         for _ in range(length):
-            char_code = struct.unpack('<H', self.read_bytes(2))[0]
+            char_code = struct.unpack("<H", self.read_bytes(2))[0]
             # Handle surrogates (invalid in isolation)
             if 0xD800 <= char_code <= 0xDFFF:
-                chars.append('\ufffd')  # replacement character
+                chars.append("\ufffd")  # replacement character
             else:
                 chars.append(chr(char_code))
-        return ''.join(chars)
-
+        return "".join(chars)
 
 
 # Object type constants
@@ -107,13 +122,27 @@ OBJECT_TYPE_AI_DRAWING = 23
 OBJECT_TYPE_STROKE_GROUP = 100
 
 OBJECT_TYPE_NAMES = {
-    1: "Stroke", 2: "TextBoxSimple", 3: "TextBoxRich", 4: "Container",
-    7: "Image", 8: "Audio", 10: "Video", 11: "PDF", 13: "Shape",
-    14: "Link", 15: "StrokeV2", 17: "Formula", 19: "Signature",
-    20: "Table", 21: "Chart", 22: "Drawing", 23: "AIDrawing", 100: "StrokeGroup",
+    1: "Stroke",
+    2: "TextBoxSimple",
+    3: "TextBoxRich",
+    4: "Container",
+    7: "Image",
+    8: "Audio",
+    10: "Video",
+    11: "PDF",
+    13: "Shape",
+    14: "Link",
+    15: "StrokeV2",
+    17: "Formula",
+    19: "Signature",
+    20: "Table",
+    21: "Chart",
+    22: "Drawing",
+    23: "AIDrawing",
+    100: "StrokeGroup",
 }
 
-SUPPORTED_TYPES = [1,2,3,4,7,8,10,11,13,14,15,17,19,20,21,23]
+SUPPORTED_TYPES = [1, 2, 3, 4, 7, 8, 10, 11, 13, 14, 15, 17, 19, 20, 21, 23]
 
 
 @dataclass
@@ -138,7 +167,7 @@ class ObjectData:
     stroke_parse_error: Optional[str] = None
 
     child_count: int = 0
-    children: List['ObjectData'] = field(default_factory=list)
+    children: List["ObjectData"] = field(default_factory=list)
 
 
 @dataclass
@@ -152,7 +181,7 @@ class LayerData:
     hash: str = ""
 
 
-@dataclass  
+@dataclass
 class PageData:
     uuid: str = ""
     modified_time: int = 0
@@ -184,18 +213,18 @@ class SDOCXData:
 
 class NoteNoteParser:
     """Parse note.note file based on g0.h class."""
-    
+
     def parse(self, data: bytes) -> NoteMetadata:
         reader = BinaryReader(data)
         meta = NoteMetadata()
-        
+
         # Header from h.b()
         offset_to_data = reader.read_int32()
         reader.skip(1)
         flags = reader.read_int32()
         reader.skip(1)
         meta_flags = reader.read_int32()
-        
+
         meta.format_version = reader.read_int32()
         meta.note_id = reader.read_string() or ""
         reader.read_int32()  # file_revision
@@ -206,28 +235,28 @@ class NoteNoteParser:
         reader.read_int32()  # page_h_padding
         reader.read_int32()  # page_v_padding
         reader.read_int32()  # min_format_version
-        
+
         # Title object
         title_size = reader.read_int32()
         if title_size > 0:
             title_data = reader.read_bytes(title_size)
             meta.title = self._extract_title(title_data)
-        
+
         return meta
-    
+
     def _extract_title(self, data: bytes) -> str:
         """Extract title from text object binary.
-        
+
         The title text is stored as: int32 length, then UTF-16LE characters.
         We search for the pattern within the text object data.
         """
         if len(data) < 20:
             return ""
-        
+
         # Search for int32 length + UTF-16LE text pattern
         # The length should be reasonable (3-200 characters)
         for i in range(0, len(data) - 10):
-            potential_len = struct.unpack('<i', data[i:i+4])[0]
+            potential_len = struct.unpack("<i", data[i : i + 4])[0]
             if 3 <= potential_len <= 200:
                 start = i + 4
                 end = start + potential_len * 2
@@ -237,28 +266,26 @@ class NoteNoteParser:
                         # Check if it looks like valid UTF-16LE text
                         valid = True
                         for j in range(0, len(text_bytes), 2):
-                            char = struct.unpack('<H', text_bytes[j:j+2])[0]
+                            char = struct.unpack("<H", text_bytes[j : j + 2])[0]
                             # Must be printable ASCII
                             if not (0x20 <= char <= 0x7E):
                                 valid = False
                                 break
                         if valid:
-                            return text_bytes.decode('utf-16-le')
+                            return text_bytes.decode("utf-16-le")
                     except Exception:
                         continue
-        
+
         return ""
-
-
 
 
 class PageParser:
     """Parse .page files based on g0.u class."""
-    
+
     def parse(self, data: bytes) -> PageData:
         reader = BinaryReader(data)
         page = PageData()
-        
+
         # Header from u.f()
         layer_offset = reader.read_int32()  # iP
         reader.seek(0)
@@ -277,82 +304,92 @@ class PageParser:
         page.modified_time = reader.read_int64()
         page.format_version = reader.read_int32()
         reader.read_int32()  # min_format_version
-        
+
         # Seek to layers
         reader.seek(layer_offset)
-        
+
         page.layer_count = reader.read_short()
         reader.read_short()  # current_layer_index
-        
+
         for _ in range(page.layer_count):
             reader.skip(4)  # skip 4 before each layer
             layer = self._parse_layer(reader)
             page.layers.append(layer)
-        
+
         return page
-    
+
     def _parse_layer(self, reader: BinaryReader) -> LayerData:
         """Parse layer from u.f() - layer section."""
         layer = LayerData()
-        
+
         reader.read_int32()  # iP8 - next offset
-        reader.read_byte()   # flag 1
+        reader.read_byte()  # flag 1
         flags2 = reader.read_byte()
-        reader.read_byte()   # flag 3
+        reader.read_byte()  # flag 3
         content_flags = reader.read_byte()  # b6
-        
+
         layer.visible = (flags2 & 1) == 0
         layer.locked = (flags2 & 2) != 0
-        
+
         reader.read_int32()  # c
-        
+
         # Optional fields based on content_flags (b6)
-        if content_flags & 0x01: reader.read_byte()
-        if content_flags & 0x02: reader.read_int32()
-        if content_flags & 0x04: reader.read_string()
-        if content_flags & 0x08: layer.uuid = reader.read_string() or ""
-        if content_flags & 0x10: layer.modified_time = reader.read_int64()
-        if content_flags & 0x20: reader.read_int32()
-        
+        if content_flags & 0x01:
+            reader.read_byte()
+        if content_flags & 0x02:
+            reader.read_int32()
+        if content_flags & 0x04:
+            reader.read_string()
+        if content_flags & 0x08:
+            layer.uuid = reader.read_string() or ""
+        if content_flags & 0x10:
+            layer.modified_time = reader.read_int64()
+        if content_flags & 0x20:
+            reader.read_int32()
+
         # Object count
         layer.object_count = reader.read_int32()
-        
+
         # Parse objects using g() method structure
         self._parse_objects(reader, layer.object_count, layer.objects)
-        
+
         # Layer hash (32 bytes)
         hash_bytes = reader.read_bytes(32)
         layer.hash = hash_bytes.hex()
-        
+
         return layer
-    
-    def _parse_objects(self, reader: BinaryReader, count: int, out_list: List[ObjectData]):
+
+    def _parse_objects(
+        self, reader: BinaryReader, count: int, out_list: List[ObjectData]
+    ):
         """Parse objects from C1316b.g() method."""
         for _ in range(count):
             obj = ObjectData()
-            
+
             # From g(): byte b = readByte(); int iS = T.q.S();
             obj.object_type = reader.read_byte()
-            obj.object_type_name = OBJECT_TYPE_NAMES.get(obj.object_type, f"Type_{obj.object_type}")
+            obj.object_type_name = OBJECT_TYPE_NAMES.get(
+                obj.object_type, f"Type_{obj.object_type}"
+            )
             obj.child_count = reader.read_short()  # iS - child count for containers
-            
+
             if obj.object_type in SUPPORTED_TYPES:
                 # From f(): int iP = T.q.P() - object size
                 obj.binary_size = reader.read_int32()
-                
+
                 if obj.binary_size > 0 and obj.binary_size < 2097152:
                     obj_data = reader.read_bytes(obj.binary_size)
                     self._parse_object_base(obj, obj_data)
-                
+
                 # For container type, recursively parse children
                 if obj.object_type == OBJECT_TYPE_CONTAINER and obj.child_count > 0:
                     self._parse_objects(reader, obj.child_count, obj.children)
             else:
                 # Unknown type - skip using h() method structure
                 self._skip_unknown_object(reader, obj.child_count)
-            
+
             out_list.append(obj)
-    
+
     def _skip_unknown_object(self, reader: BinaryReader, child_count: int):
         """Skip unknown object type using h() structure."""
         for _ in range(child_count):
@@ -361,11 +398,11 @@ class PageParser:
             nested_count = reader.read_short()
             reader.skip(size)
             self._skip_unknown_object(reader, nested_count)
-    
+
     def _parse_object_base(self, obj: ObjectData, data: bytes) -> None:
         """Parse common object header from j0.b.l() method.
-        
-        Structure: 
+
+        Structure:
         - int32: total size (i3)
         - short: data type (must be 0)
         - int32: var_data_offset (i6)
@@ -383,132 +420,165 @@ class PageParser:
         """
         if len(data) < 45:
             return
-        
+
         try:
             reader = BinaryReader(data)
-            
+
             # i3 = total size
             total_size = reader.read_int32()
-            
+
             # s = data_type (must be 0)
             data_type = reader.read_short()
             if data_type != 0:
                 return
-            
+
             # i6 = var_data_offset
             var_data_offset = reader.read_int32()
-            
+
             # b = flag_byte_len, s2 = flags
             flag_byte_len = reader.read_byte()
             flags = reader.read_short()
             # Skip remaining flag bytes
             if flag_byte_len > 2:
                 reader.skip(flag_byte_len - 2)
-            
+
             # byte: field_byte_len
             field_byte_len = reader.read_byte()
-            
+
             # i12 = field_flags
             field_flags = reader.read_int32()
-            
+
             # i14 = format_version
             obj.format_version = reader.read_int32()
-            
+
             # UUID via k0.x.a() - short length then UTF-8 bytes
             uuid_len = reader.read_short()
             if uuid_len > 0 and uuid_len <= 36:
                 uuid_bytes = reader.read_bytes(uuid_len)
                 # Decode UTF-8, stopping at null
                 try:
-                    uuid_str = uuid_bytes.split(b'\x00')[0].decode('utf-8')
+                    uuid_str = uuid_bytes.split(b"\x00")[0].decode("utf-8")
                     obj.uuid = uuid_str
-                except:
+                except Exception:
                     obj.uuid = ""
             elif uuid_len > 36:
                 # Skip if too long
                 reader.skip(uuid_len)
-            
+
             # modifiedTime (long)
             obj.modified_time = reader.read_int64()
-            
+
             # Bounding rect (4 doubles)
             obj.bounding_rect = BoundingRect(
                 left=reader.read_double(),
                 top=reader.read_double(),
                 right=reader.read_double(),
-                bottom=reader.read_double()
+                bottom=reader.read_double(),
             )
-            
+
             # timestamp (int32)
             reader.read_int32()
-            
+
             # resizable (byte)
             reader.read_byte()
-            
+
             # Calculate remaining stroke data for stroke types
             if obj.object_type in [OBJECT_TYPE_STROKE, OBJECT_TYPE_STROKE_V2]:
                 # IMPORTANT: var_data_offset points to the internal stroke payload.
-                payload_offset = var_data_offset if 0 < var_data_offset < len(data) else reader.tell()
+                payload_offset = (
+                    var_data_offset
+                    if 0 < var_data_offset < len(data)
+                    else reader.tell()
+                )
                 stroke_payload = data[payload_offset:]
                 obj.stroke_data_size = len(stroke_payload)
 
-
-
                 try:
                     raw_points = parse_delta_stroke_payload(stroke_payload)
-                    
+
                     if raw_points:
                         # Convert relative points to absolute page coordinates
                         # raw_points start [0,0] and accumulate deltas.
                         # Align cluster so its min matches bounding_rect top-left.
                         min_x = min(p[0] for p in raw_points)
                         min_y = min(p[1] for p in raw_points)
-                        
+
                         abs_points = []
                         for rx, ry in raw_points:
-                            abs_points.append((
-                                (rx - min_x) + obj.bounding_rect.left,
-                                (ry - min_y) + obj.bounding_rect.top
-                            ))
-                        
-                        # DISABLED: Trimming was hiding real data
-                        # if len(abs_points) > 2:
-                        #     abs_points = abs_points[:-2]
-                            
+                            abs_points.append(
+                                (
+                                    (rx - min_x) + obj.bounding_rect.left,
+                                    (ry - min_y) + obj.bounding_rect.top,
+                                )
+                            )
+
+                        # Remove termination marker points (last 2 points include a +12.0 Y delta)
+                        if len(abs_points) > 2:
+                            abs_points = abs_points[:-2]
+
                         obj.stroke_points = abs_points
 
                 except Exception as e:
                     obj.stroke_points = []
                     obj.stroke_parse_error = f"{type(e).__name__}: {e}"
 
-
         except Exception:
             pass
-        
 
-def _decode_samsung_fixed15_5(word: int) -> float:
-    """Decode Samsung stroke fixed-point word.
 
-    Observed encoding: sign bit (0x8000), 10+ bits integer in bits 5..14, 5-bit fraction in bits 0..4.
+def _decode_samsung_fixed5_5(word: int) -> float:
+    """Decode Samsung stroke delta using 5.5 fixed-point format.
+
+    From SIMD path in SPen::ObjectStrokeBinaryHandler::sm_RestoreStroke
+    at offset 0x2f6790-0x2f6870 in libSPenModel.so:
+
+    16-bit word layout:
+    ┌─────────┬───────────┬───────────┬──────────────┐
+    │ Bit 15  │  10-14    │   5-9     │    0-4       │
+    ├─────────┼───────────┼───────────┼──────────────┤
+    │ Sign    │ Unused    │ Integer   │ Fractional   │
+    │ (0=pos, │ (cleared) │ (5 bits)  │ (5 bits)     │
+    │  1=neg) │           │ range 0-31│ /32.0        │
+    └─────────┴───────────┴───────────┴──────────────┘
+
+    Assembly from SIMD path:
+      movi v0.2s, #0x1f             ; mask = 0x1F (5 bits)
+      movi v1.2s, #0x3d, lsl #24    ; scale = 0.03125 (1/32)
+      and  v3.8b, v2.8b, v0.8b      ; fractional = value & 0x1F
+      ushr v4.2s, v2.2s, #0x5       ; integer = value >> 5
+      bic  v4.2s, #0x4, lsl #8      ; clear bit 10 (mask to 5 bits)
+      scvtf v3.2s, v3.2s            ; convert to float
+      scvtf v4.2s, v4.2s            ; convert to float
+      fmul v3.2s, v3.2s, v1.2s      ; frac = frac * (1/32)
+      fadd v3.2s, v3.2s, v4.2s      ; result = int + frac
     """
-    is_neg = bool(word & 0x8000)
-    magnitude = word & 0x7FFF
-    integer_part = magnitude >> 5
-    frac_part = magnitude & 0x1F
-    val = integer_part + (frac_part / 32.0)
-    return -val if is_neg else val
+    fractional_part = word & 0x1F  # bits 0-4 (5 bits)
+    integer_part = (word >> 5) & 0x1F  # bits 5-9 (5 bits)
+
+    result = integer_part + (fractional_part / 32.0)
+
+    # Sign check: if original 16-bit signed value was negative (bit 15 set)
+    if word & 0x8000:
+        result = -result
+
+    return result
 
 
 def parse_delta_stroke_payload(payload: bytes) -> List[Tuple[float, float]]:
     """Stroke payload parser (Samsung Notes).
 
-    Offsets from reverse-engineering `libSpen_document.dll`
-    (stroke write path in `SPen::WLayer::Save`):
-    - 34: uint32 point_count
-    - 52: float32 start_x, start_y
-    - 60: delta stream of uint16 dx, uint16 dy (fixed-point 15.5)
+    Discovered through reverse-engineering libSPenModel.so (sm_RestoreStroke):
 
-    Coordinates are stored as seen on the page (no extra bounding-box offset needed).
+    Payload structure:
+    - Offset 34: uint32 point_count
+    - Offset 60: Delta stream (dX:uint16, dY:uint16 pairs)
+
+    Delta encoding uses 5.5 fixed-point format (from SIMD path):
+    - Bits 0-4: Fractional part (divide by 32)
+    - Bits 5-9: Integer part (range 0-31)
+    - Bit 15: Sign bit
+
+    The last 2 points are a termination marker (+12.0 Y delta) and should be trimmed.
     """
     if len(payload) < 64:
         return []
@@ -521,35 +591,24 @@ def parse_delta_stroke_payload(payload: bytes) -> List[Tuple[float, float]]:
     points: List[Tuple[float, float]] = [(x, y)]
 
     # Based on observation and verification of ranges:
-    # 34: point_count (uint32) 
+    # 34: point_count (uint32)
     # 60: packed XY delta stream
     # Using 4-byte stride: gives best overall bounding box match across all strokes
     # SDK f391Z=12 may refer to a different encoding layer or include pressure/other data
-    
+
     off = 60
-    stride = 4  # 4-byte stride (dx, dy packed) gives best bbox match
+    stride = 4  # 4-byte stride: (dX, dY) packed as uint16 pairs
     for _ in range(point_count - 1):
         if off + stride > len(payload):
             break
         dx_raw, dy_raw = struct.unpack_from("<HH", payload, off)
         off += stride
-        
-        x += _decode_samsung_fixed15_5(dx_raw)
-        y += _decode_samsung_fixed15_5(dy_raw)
+
+        x += _decode_samsung_fixed5_5(dx_raw)
+        y += _decode_samsung_fixed5_5(dy_raw)
         points.append((x, y))
 
     return points
-
-
-
-
-
-
-
-
-
-
-
 
 
 class PageIdInfoParser:
@@ -577,30 +636,30 @@ class SDOCXExtractor:
         self.note_parser = NoteNoteParser()
         self.page_parser = PageParser()
         self.page_id_parser = PageIdInfoParser()
-    
+
     def extract(self) -> SDOCXData:
         result = SDOCXData()
-        
-        with zipfile.ZipFile(self.filepath, 'r') as zf:
+
+        with zipfile.ZipFile(self.filepath, "r") as zf:
             file_list = zf.namelist()
-            
-            if 'note.note' in file_list:
-                with zf.open('note.note') as f:
+
+            if "note.note" in file_list:
+                with zf.open("note.note") as f:
                     result.metadata = self.note_parser.parse(f.read())
-            
-            if 'pageIdInfo.dat' in file_list:
-                with zf.open('pageIdInfo.dat') as f:
+
+            if "pageIdInfo.dat" in file_list:
+                with zf.open("pageIdInfo.dat") as f:
                     result.page_ids = self.page_id_parser.parse(f.read())
-            
+
             for filename in file_list:
-                if filename.endswith('.page'):
+                if filename.endswith(".page"):
                     with zf.open(filename) as f:
                         result.pages.append(self.page_parser.parse(f.read()))
-            
+
             for filename in file_list:
-                if filename.startswith('media/') and not filename.endswith('.dat'):
+                if filename.startswith("media/") and not filename.endswith(".dat"):
                     result.media_files.append(filename)
-        
+
         return result
 
 
@@ -627,38 +686,41 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python sdocx_extractor.py <path_to_sdocx>")
         sys.exit(1)
-    
+
     filepath = sys.argv[1]
     if not os.path.exists(filepath):
         print(f"Error: File not found: {filepath}")
         sys.exit(1)
-    
+
     try:
         extractor = SDOCXExtractor(filepath)
         data = extractor.extract()
-        
+
         output = {
-            'metadata': asdict(data.metadata),
-            'page_ids': data.page_ids,
-            'pages': [asdict(p) for p in data.pages],
-            'media_files': data.media_files,
-            'summary': {
-                'title': data.metadata.title,
-                'page_count': len(data.pages),
-                'total_layers': sum(len(p.layers) for p in data.pages),
-                'total_objects': sum(sum(len(l.objects) for l in p.layers) for p in data.pages),
-                'stroke_count': count_strokes(data),
-            }
+            "metadata": asdict(data.metadata),
+            "page_ids": data.page_ids,
+            "pages": [asdict(p) for p in data.pages],
+            "media_files": data.media_files,
+            "summary": {
+                "title": data.metadata.title,
+                "page_count": len(data.pages),
+                "total_layers": sum(len(p.layers) for p in data.pages),
+                "total_objects": sum(
+                    sum(len(l.objects) for l in p.layers) for p in data.pages
+                ),
+                "stroke_count": count_strokes(data),
+            },
         }
-        
+
         print(json.dumps(output, indent=2, ensure_ascii=False))
-        
+
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

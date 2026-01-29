@@ -1,2 +1,26 @@
 decompiled_source
 com.samsung.android.app.notes_4.4.37.13-443713003_minAPI26(arm64-v8a)(nodpi)_apkmirror.com.apk
+
+# Python
+__pycache__/
+*.pyc
+.ruff_cache/
+
+# Generated outputs
+output_strokes.svg
+stroke_points_plot.png
+stroke_bounding_boxes.png
+output.json
+*.png
+!Screenshot_*.jpg
+
+# Temporary folders
+zippedFiles/
+notePnote/
+allNotes.txt
+extracted_sdocx/
+unzipped_sdocx/
+
+# IDE
+.vscode/
+.idea/
