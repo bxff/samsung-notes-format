@@ -12,6 +12,7 @@ stroke_points_plot.png
 stroke_bounding_boxes.png
 output.json
 *.png
+*.svg
 !Screenshot_*.jpg
 
 # Temporary folders
