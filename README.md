@@ -34,6 +34,17 @@ samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120
 # Stroke order is on by default: ruled rows top-to-bottom, then X-bands (word-ish gaps) left-to-right with local greedy chaining; tiny marks attach to the nearest band. Raw JSON order: --no-writing-order
 samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120
 
+# Pen-up XY travel (sum of jumps between strokes in mm). Compare row-height scales, then fix the winner in sdocx_gcode.RULED_LINE_ROW_HEIGHT_SCALE or pass --row-height-scale to gcode/plot/inbox:
+samsung-notes metrics note.sdocx
+samsung-notes metrics note.sdocx --sweep-row-scale 1.0 1.15 1.5 1.725 2.0
+samsung-notes metrics note.sdocx --optimize-row-scale
+samsung-notes metrics note.sdocx --optimize-row-scale 0.8:2.5:0.1
+
+# Same file, sweep other ordering knobs (each flag alone uses a built-in MIN:MAX:STEP). Combine with --row-height-scale 1.1 to fix the row grid while sweeping:
+samsung-notes metrics note.sdocx --row-height-scale 1.1 --optimize-x-gap-factor
+samsung-notes metrics note.sdocx --row-height-scale 1.1 --optimize-chain-y-weight --optimize-chain-back-x-weight
+# Available: --optimize-x-gap-factor, --optimize-chain-y-weight, --optimize-chain-back-x-weight, --optimize-intra-line-y-factor, --optimize-carriage-y-lines
+
 # From saved JSON
 samsung-notes gcode --from-json extracted.json -o plot.gcode --width-mm 120
 

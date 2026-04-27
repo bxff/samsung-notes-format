@@ -6,13 +6,30 @@ from __future__ import annotations
 import json
 import tomllib
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from plot_strokes import iter_objects
 
 # After fitting the ruled grid, scale pitch (>1 = taller rows, wider SVG bands, fewer Y splits).
-RULED_LINE_ROW_HEIGHT_SCALE = 1.15
+RULED_LINE_ROW_HEIGHT_SCALE = 1.1
+
+
+@dataclass(frozen=True)
+class StrokeOrderTuning:
+    """Tunable ordering heuristics (defaults match historical hard-coded behavior)."""
+
+    # Horizontal band split: gap_thresh = max(3 px, x_gap_med_h_factor * med_h).
+    x_gap_med_h_factor: float = 0.48
+    # Greedy chain: penalize vertical / backward-X pen-up moves.
+    chain_y_weight: float = 1.35
+    chain_back_x_weight: float = 4.5
+    # intra_line_y_slack = max(intra_line_y_slack_min_px, intra_line_y_slack_factor * med_h).
+    intra_line_y_slack_factor: float = 1.10
+    intra_line_y_slack_min_px: float = 20.0
+    # New row: target start Y ≈ prev_row_bottom + carriage_y_extra_lines * slack.
+    carriage_y_extra_lines: float = 1.5
 
 
 def default_profile_path() -> Path:
@@ -67,6 +84,26 @@ def _px_to_mm(
     else:
         y_mm = offset_y_mm + y_px * scale
     return x_mm, y_mm
+
+
+def pen_up_travel_xy_mm(
+    strokes: list[list[tuple[float, float]]],
+) -> tuple[float, int]:
+    """Sum of Euclidean XY jumps between stroke end and next stroke start (pen-up travel).
+
+    Matches the travel implied by ``_emit_strokes`` between consecutive polylines.
+    Returns ``(total_mm, n_jumps)``; ``n_jumps`` is ``max(0, len(strokes) - 1)``.
+    """
+    if len(strokes) < 2:
+        return 0.0, 0
+    total = 0.0
+    n = len(strokes)
+    for i in range(n - 1):
+        x0, y0 = strokes[i][-1]
+        x1, y1 = strokes[i + 1][0]
+        dx, dy = x1 - x0, y1 - y0
+        total += (dx * dx + dy * dy) ** 0.5
+    return total, n - 1
 
 
 def _bbox_px(poly: list[tuple[float, float]]) -> tuple[float, float, float, float]:
@@ -311,6 +348,9 @@ def _order_row_indices_minimize_travel(
     oriented: list[list[tuple[float, float]]],
     bboxes_px: list[tuple[float, float, float, float]],
     med_h: float,
+    *,
+    chain_y_weight: float = 1.35,
+    chain_back_x_weight: float = 4.5,
 ) -> list[int]:
     """Primary strokes: greedy travel chain with back-X penalty; try several left seeds.
 
@@ -323,9 +363,8 @@ def _order_row_indices_minimize_travel(
     if not primary:
         primary = list(idxs)
         debris = []
-    y_w = 1.35
-    # Stronger penalty for pen-up → pen-down that moves left (px space).
-    back_w = 4.5
+    y_w = chain_y_weight
+    back_w = chain_back_x_weight
     out = _greedy_chain_best_of_seeds(
         primary,
         oriented,
@@ -354,11 +393,13 @@ def _cluster_row_primaries_by_x_gap(
     primary_idxs: list[int],
     bboxes_px: list[tuple[float, float, float, float]],
     med_h: float,
+    *,
+    gap_med_h_factor: float = 0.48,
 ) -> list[list[int]]:
     """Split primary strokes into left-to-right bands (word-ish) by bbox gaps on X."""
     if not primary_idxs:
         return []
-    gap_thresh = max(3.0, 0.48 * med_h)
+    gap_thresh = max(3.0, gap_med_h_factor * med_h)
     sorted_i = sorted(primary_idxs, key=lambda i: (bboxes_px[i][0], bboxes_px[i][2]))
     groups: list[list[int]] = []
     cur = [sorted_i[0]]
@@ -498,7 +539,11 @@ def collect_strokes_px_for_page(page: dict[str, Any]) -> list[list[tuple[float, 
     return polys
 
 
-def uniform_row_pitch_px_for_page(page: dict[str, Any]) -> float:
+def uniform_row_pitch_px_for_page(
+    page: dict[str, Any],
+    *,
+    row_height_scale: float | None = None,
+) -> float:
     """Ruled line spacing (px) for debug bands: same grid as stroke reordering."""
     _, boxes = collect_stroke_polys_and_bboxes_px_for_page(page)
     if not boxes:
@@ -506,12 +551,16 @@ def uniform_row_pitch_px_for_page(page: dict[str, Any]) -> float:
     heights = [max(1e-3, bb[3] - bb[1]) for bb in boxes]
     med_h = sorted(heights)[len(heights) // 2]
     y_mid = [_stroke_y_center_bbox_px(bb) for bb in boxes]
-    pitch, _ = _ruled_pitch_offset_with_row_height_scale(y_mid, med_h)
+    pitch, _ = _ruled_pitch_offset_with_row_height_scale(
+        y_mid, med_h, row_height_scale=row_height_scale
+    )
     return float(pitch)
 
 
 def ruled_line_grid_meta_for_page(
     page: dict[str, Any],
+    *,
+    row_height_scale: float | None = None,
 ) -> tuple[float, float, int, int] | None:
     """Pitch, offset, min_row_index, max_row_index (inclusive), including empty ruled rows.
 
@@ -523,7 +572,9 @@ def ruled_line_grid_meta_for_page(
     heights = [max(1e-3, bb[3] - bb[1]) for bb in boxes]
     med_h = sorted(heights)[len(heights) // 2]
     y_mid = [_stroke_y_center_bbox_px(bb) for bb in boxes]
-    pitch, off = _ruled_pitch_offset_with_row_height_scale(y_mid, med_h)
+    pitch, off = _ruled_pitch_offset_with_row_height_scale(
+        y_mid, med_h, row_height_scale=row_height_scale
+    )
     inv = 1.0 / max(pitch, 1e-6)
     rids = [int(round((y - off) * inv)) for y in y_mid]
     return float(pitch), float(off), min(rids), max(rids)
@@ -651,10 +702,11 @@ def _ruled_pitch_offset_with_row_height_scale(
     med_h: float,
     *,
     off_steps: int = 96,
+    row_height_scale: float | None = None,
 ) -> tuple[float, float]:
     """Pitch/offset used for clustering, G-code order, and SVG row bands (scaled row height)."""
     pitch, off = _best_ruled_pitch_and_offset_px(y_mid, med_h, off_steps=off_steps)
-    s = RULED_LINE_ROW_HEIGHT_SCALE
+    s = float(RULED_LINE_ROW_HEIGHT_SCALE if row_height_scale is None else row_height_scale)
     if s <= 1.0 or not y_mid:
         return pitch, off
     pitch = float(pitch * s)
@@ -804,6 +856,8 @@ def _prepare_row_clusters_overlap(
 def _prepare_row_clusters(
     polys_px: list[list[tuple[float, float]]],
     bboxes_px: list[tuple[float, float, float, float]],
+    *,
+    row_height_scale: float | None = None,
 ) -> tuple[
     list[list[tuple[float, float]]],
     list[tuple[float, float, float]],
@@ -834,7 +888,9 @@ def _prepare_row_clusters(
     if n < 2:
         clusters = [list(range(n))]
     else:
-        pitch, off = _ruled_pitch_offset_with_row_height_scale(y_mid, med_h)
+        pitch, off = _ruled_pitch_offset_with_row_height_scale(
+            y_mid, med_h, row_height_scale=row_height_scale
+        )
         clusters = _indices_by_ruled_row_id(y_mid, pitch, off)
         clusters = _merge_row_clusters_if_centroids_close(clusters, y_mid, pitch, med_h)
         span_y = max(y_mid) - min(y_mid)
@@ -848,7 +904,11 @@ def _prepare_row_clusters(
     return oriented, y_spans, med_h, bboxes_px, clusters
 
 
-def row_cluster_indices_for_page(page: dict[str, Any]) -> list[list[int]]:
+def row_cluster_indices_for_page(
+    page: dict[str, Any],
+    *,
+    row_height_scale: float | None = None,
+) -> list[list[int]]:
     """Row groups used for stroke ordering and debug SVG (indices into page stroke list).
 
     Rows are top-to-bottom (smaller page Y first).
@@ -856,7 +916,9 @@ def row_cluster_indices_for_page(page: dict[str, Any]) -> list[list[int]]:
     polys, boxes = collect_stroke_polys_and_bboxes_px_for_page(page)
     if not polys:
         return []
-    *_, clusters = _prepare_row_clusters(polys, boxes)
+    *_, clusters = _prepare_row_clusters(
+        polys, boxes, row_height_scale=row_height_scale
+    )
     return clusters
 
 
@@ -864,6 +926,8 @@ def order_strokes(
     polys_px: list[list[tuple[float, float]]],
     *,
     bboxes_px: list[tuple[float, float, float, float]] | None = None,
+    row_height_scale: float | None = None,
+    stroke_order_tuning: StrokeOrderTuning | None = None,
 ) -> list[list[tuple[float, float]]]:
     """Handwriting-like order: **ruled rows** top-to-bottom, never interleaving rows.
 
@@ -887,11 +951,15 @@ def order_strokes(
         raise ValueError("bboxes_px must match polys_px length")
 
     oriented, _y_spans, med_h, bboxes_px, clusters = _prepare_row_clusters(
-        polys_px, bboxes_px
+        polys_px, bboxes_px, row_height_scale=row_height_scale
     )
-    intra_line_y_slack = max(20.0, 1.10 * med_h)
-    y_w = 1.35
-    back_w = 4.5
+    tun = stroke_order_tuning or StrokeOrderTuning()
+    intra_line_y_slack = max(
+        tun.intra_line_y_slack_min_px,
+        tun.intra_line_y_slack_factor * med_h,
+    )
+    y_w = tun.chain_y_weight
+    back_w = tun.chain_back_x_weight
 
     order_idx: list[int] = []
     prev_row_bottom: float | None = None
@@ -905,17 +973,29 @@ def order_strokes(
 
         if not primary:
             tail = _order_row_indices_minimize_travel(
-                idxs, oriented, bboxes_px, med_h
+                idxs,
+                oriented,
+                bboxes_px,
+                med_h,
+                chain_y_weight=y_w,
+                chain_back_x_weight=back_w,
             )
             order_idx.extend(tail)
             prev_row_bottom = row_bottom
             continue
 
-        groups = _cluster_row_primaries_by_x_gap(primary, bboxes_px, med_h)
+        groups = _cluster_row_primaries_by_x_gap(
+            primary,
+            bboxes_px,
+            med_h,
+            gap_med_h_factor=tun.x_gap_med_h_factor,
+        )
         debris_map = _assign_debris_to_x_groups(debris, groups, bboxes_px)
         prefer_y: float | None = None
         if row_i > 0 and prev_row_bottom is not None:
-            prefer_y = prev_row_bottom + 1.5 * intra_line_y_slack
+            prefer_y = (
+                prev_row_bottom + tun.carriage_y_extra_lines * intra_line_y_slack
+            )
 
         for gi, g in enumerate(groups):
             use_prefer = prefer_y if gi == 0 else None
@@ -955,12 +1035,19 @@ def collect_strokes_mm_for_page(
     offset_y_mm: float,
     *,
     writing_order: bool = True,
+    row_height_scale: float | None = None,
+    stroke_order_tuning: StrokeOrderTuning | None = None,
 ) -> list[list[tuple[float, float]]]:
     pw = max(1, int(page.get("width") or 1))
     ph = max(1, int(page.get("height") or 1))
     polys_px, bboxes_px = collect_stroke_polys_and_bboxes_px_for_page(page)
     if writing_order:
-        polys_px = order_strokes(polys_px, bboxes_px=bboxes_px)
+        polys_px = order_strokes(
+            polys_px,
+            bboxes_px=bboxes_px,
+            row_height_scale=row_height_scale,
+            stroke_order_tuning=stroke_order_tuning,
+        )
     out: list[list[tuple[float, float]]] = []
     for poly in polys_px:
         out.append(
@@ -1016,6 +1103,8 @@ def build_page_gcode(
     include_postamble: bool,
     *,
     writing_order: bool = True,
+    row_height_scale: float | None = None,
+    stroke_order_tuning: StrokeOrderTuning | None = None,
 ) -> str:
     pw = max(1, int(page.get("width") or 1))
     ph = max(1, int(page.get("height") or 1))
@@ -1026,6 +1115,8 @@ def build_page_gcode(
         offset_x_mm,
         offset_y_mm,
         writing_order=writing_order,
+        row_height_scale=row_height_scale,
+        stroke_order_tuning=stroke_order_tuning,
     )
     chunks: list[str] = []
     chunks.append(f"( page {page_index + 1} / {page_count} )")
@@ -1053,6 +1144,8 @@ def build_combined_gcode(
     page_pause_m0: bool,
     *,
     writing_order: bool = True,
+    row_height_scale: float | None = None,
+    stroke_order_tuning: StrokeOrderTuning | None = None,
 ) -> str:
     pages = data.get("pages") or []
     if not pages:
@@ -1073,6 +1166,8 @@ def build_combined_gcode(
             offset_x_mm,
             offset_y_mm,
             writing_order=writing_order,
+            row_height_scale=row_height_scale,
+            stroke_order_tuning=stroke_order_tuning,
         )
         parts.append(f"( page {i + 1} / {n} )")
         parts.append(f"( page pixels {pw} x {ph}, target width {width_mm:.3f} mm )")
@@ -1101,6 +1196,8 @@ def write_gcode_outputs(
     page_pause_m0: bool,
     one_file_per_page: bool,
     writing_order: bool = True,
+    row_height_scale: float | None = None,
+    stroke_order_tuning: StrokeOrderTuning | None = None,
 ) -> list[Path]:
     profile = load_profile(profile_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1126,6 +1223,8 @@ def write_gcode_outputs(
                 include_preamble=True,
                 include_postamble=True,
                 writing_order=writing_order,
+                row_height_scale=row_height_scale,
+                stroke_order_tuning=stroke_order_tuning,
             )
             chunk_path.write_text(text, encoding="utf-8")
             written.append(chunk_path)
@@ -1139,6 +1238,8 @@ def write_gcode_outputs(
             offset_y_mm,
             page_pause_m0,
             writing_order=writing_order,
+            row_height_scale=row_height_scale,
+            stroke_order_tuning=stroke_order_tuning,
         )
         out_path.write_text(text, encoding="utf-8")
         written.append(out_path)

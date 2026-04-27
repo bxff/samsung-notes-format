@@ -52,6 +52,8 @@ def _append_row_debug_overlay(
     page: dict,
     width: float,
     height: float,
+    *,
+    row_height_scale: float | None = None,
 ) -> None:
     """Draw bands + dashed lines for ruled-line row clusters (see ``row_cluster_indices_for_page``)."""
     try:
@@ -64,11 +66,15 @@ def _append_row_debug_overlay(
         print(f"Warning: row overlay needs sdocx_gcode: {e}", file=sys.stderr)
         return
 
-    clusters = row_cluster_indices_for_page(page)
+    clusters = row_cluster_indices_for_page(
+        page, row_height_scale=row_height_scale
+    )
     _, boxes = collect_stroke_polys_and_bboxes_px_for_page(page)
     if not clusters:
         return
-    pitch = uniform_row_pitch_px_for_page(page)
+    pitch = uniform_row_pitch_px_for_page(
+        page, row_height_scale=row_height_scale
+    )
     colors = [
         "#ff4d00",
         "#00a86b",
@@ -110,6 +116,7 @@ def generate_svg(
     stroke_width: float = 2.0,
     stroke_color: Optional[str] = None,
     show_rows: bool = False,
+    row_height_scale: float | None = None,
 ) -> bool:
     """Generate SVG from extracted stroke data. Returns True on success."""
     if not data or not data.get("pages"):
@@ -131,7 +138,13 @@ def generate_svg(
     ]
 
     if show_rows:
-        _append_row_debug_overlay(svg_lines, page, float(width), float(height))
+        _append_row_debug_overlay(
+            svg_lines,
+            page,
+            float(width),
+            float(height),
+            row_height_scale=row_height_scale,
+        )
 
     # Use single color if specified, otherwise cycle through palette
     colors = (
@@ -213,6 +226,7 @@ def process_file(
     show_bbox: bool = True,
     stroke_width: float = 2.0,
     show_rows: bool = False,
+    row_height_scale: float | None = None,
 ) -> bool:
     """Process a single SDOCX file and generate SVG."""
     print(f"\nProcessing: {sdocx_path}")
@@ -241,6 +255,7 @@ def process_file(
         show_bbox=show_bbox,
         stroke_width=stroke_width,
         show_rows=show_rows,
+        row_height_scale=row_height_scale,
     ):
         print(f"  SVG: {svg_path}")
         return True
@@ -290,6 +305,13 @@ def main():
         "--show-rows",
         action="store_true",
         help="Overlay ruled-line row bands (same grid as G-code stroke reordering)",
+    )
+    parser.add_argument(
+        "--row-height-scale",
+        type=float,
+        default=None,
+        metavar="S",
+        help="Ruled row pitch multiplier for --show-rows (default: sdocx_gcode.RULED_LINE_ROW_HEIGHT_SCALE)",
     )
 
     args = parser.parse_args()
@@ -341,6 +363,7 @@ def main():
             show_bbox=not args.no_bbox,
             stroke_width=args.stroke_width,
             show_rows=args.show_rows,
+            row_height_scale=args.row_height_scale,
         ):
             success_count += 1
 
