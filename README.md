@@ -31,8 +31,8 @@ samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120
 # Y mirror is on by default (page top → typical plotter orientation). Turn off if needed:
 # samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120 --no-flip-y
 
-# Reading order: strokes grouped into horizontal rows, then left→right within each row
-samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120 --writing-order
+# Stroke order is on by default: ruled rows top-to-bottom, then X-bands (word-ish gaps) left-to-right with local greedy chaining; tiny marks attach to the nearest band. Raw JSON order: --no-writing-order
+samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120
 
 # From saved JSON
 samsung-notes gcode --from-json extracted.json -o plot.gcode --width-mm 120
@@ -54,6 +54,7 @@ python3 sdocx_extractor.py note.sdocx -o extracted.json
 
 # SVG preview (first page)
 python3 plot_strokes.py note.sdocx --output-dir ./out
+python3 plot_strokes.py note.sdocx --output-dir ./out --show-rows   # debug row clustering
 ```
 
 ---

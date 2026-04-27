@@ -120,7 +120,12 @@ def cmd_inbox(args: argparse.Namespace) -> int:
             log_lines.append("OK gcode -> " + ", ".join(str(p) for p in paths))
             if args.also_svg:
                 svg_path = get_output_path(str(sdocx), str(outbox_dir), ".svg")
-                if generate_svg(data, svg_path, show_bbox=not args.no_bbox):
+                if generate_svg(
+                    data,
+                    svg_path,
+                    show_bbox=not args.no_bbox,
+                    show_rows=args.also_svg_rows,
+                ):
                     log_lines.append(f"OK svg -> {svg_path}")
                 else:
                     log_lines.append("WARN: svg generation failed")
@@ -174,8 +179,9 @@ def _add_gcode_flags(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument(
         "--writing-order",
-        action="store_true",
-        help="Group strokes into text rows, then left→right per row; orient each path L→R (or top→bottom if vertical)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Reorder strokes for the plotter (default: on). Use --no-writing-order for JSON order.",
     )
 
 
@@ -235,6 +241,11 @@ def main() -> None:
         "--no-bbox",
         action="store_true",
         help="With --also-svg: do not draw bounding boxes",
+    )
+    p_in.add_argument(
+        "--also-svg-rows",
+        action="store_true",
+        help="With --also-svg: overlay writing-order row bands (debug)",
     )
     _add_gcode_flags(p_in)
     p_in.set_defaults(func=cmd_inbox)
