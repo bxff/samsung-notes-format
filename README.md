@@ -26,7 +26,13 @@ samsung-notes extract note.sdocx
 samsung-notes extract note.sdocx -o extracted.json
 
 # GRBL G-code (plotter: pen up/down via Z). Default profile: bundled `grbl_plotter_z.toml`
-samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120 --flip-y
+samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120
+
+# Y mirror is on by default (page top → typical plotter orientation). Turn off if needed:
+# samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120 --no-flip-y
+
+# Reading order: strokes grouped into horizontal rows, then left→right within each row
+samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120 --writing-order
 
 # From saved JSON
 samsung-notes gcode --from-json extracted.json -o plot.gcode --width-mm 120

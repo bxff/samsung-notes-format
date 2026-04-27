@@ -73,6 +73,7 @@ def cmd_gcode(args: argparse.Namespace) -> int:
             offset_y_mm=args.offset_y,
             page_pause_m0=not args.no_page_pause,
             one_file_per_page=args.one_file_per_page,
+            writing_order=args.writing_order,
         )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -114,6 +115,7 @@ def cmd_inbox(args: argparse.Namespace) -> int:
                 offset_y_mm=args.offset_y,
                 page_pause_m0=not args.no_page_pause,
                 one_file_per_page=args.one_file_per_page,
+                writing_order=args.writing_order,
             )
             log_lines.append("OK gcode -> " + ", ".join(str(p) for p in paths))
             if args.also_svg:
@@ -154,8 +156,9 @@ def _add_gcode_flags(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument(
         "--flip-y",
-        action="store_true",
-        help="Flip Y (screen top-left vs machine origin)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Mirror page Y when converting to mm (default: on; use --no-flip-y if the plot is upside down)",
     )
     p.add_argument("--offset-x", type=float, default=0.0, help="X offset in mm")
     p.add_argument("--offset-y", type=float, default=0.0, help="Y offset in mm")
@@ -168,6 +171,11 @@ def _add_gcode_flags(p: argparse.ArgumentParser) -> None:
         "--one-file-per-page",
         action="store_true",
         help="Write stem_p01.gcode, stem_p02.gcode, ...",
+    )
+    p.add_argument(
+        "--writing-order",
+        action="store_true",
+        help="Group strokes into text rows, then left→right per row; orient each path L→R (or top→bottom if vertical)",
     )
 
 
