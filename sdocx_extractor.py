@@ -27,6 +27,7 @@ And native library reverse engineering:
 - libSPenModel.so (sm_RestoreStroke, sm_ShortToFloatDelta)
 """
 
+import argparse
 import struct
 import zipfile
 import json
@@ -697,38 +698,52 @@ def count_strokes_in_list(objects: List[ObjectData]) -> int:
     return count
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python sdocx_extractor.py <path_to_sdocx>")
-        sys.exit(1)
+def extract_to_dict(filepath: str) -> dict:
+    """Parse .sdocx and return the same structure as JSON export (no I/O)."""
+    extractor = SDOCXExtractor(filepath)
+    data = extractor.extract()
+    return {
+        "metadata": asdict(data.metadata),
+        "page_ids": data.page_ids,
+        "pages": [asdict(p) for p in data.pages],
+        "media_files": data.media_files,
+        "summary": {
+            "title": data.metadata.title,
+            "page_count": len(data.pages),
+            "total_layers": sum(len(p.layers) for p in data.pages),
+            "total_objects": sum(
+                sum(len(l.objects) for l in p.layers) for p in data.pages
+            ),
+            "stroke_count": count_strokes(data),
+        },
+    }
 
-    filepath = sys.argv[1]
-    if not os.path.exists(filepath):
-        print(f"Error: File not found: {filepath}")
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Extract Samsung Notes .sdocx to JSON (strokes, metadata)."
+    )
+    parser.add_argument("sdocx", help="Path to .sdocx file")
+    parser.add_argument(
+        "-o",
+        "--output",
+        metavar="FILE",
+        help="Write JSON to this file instead of stdout",
+    )
+    args = parser.parse_args()
+
+    if not os.path.exists(args.sdocx):
+        print(f"Error: File not found: {args.sdocx}", file=sys.stderr)
         sys.exit(1)
 
     try:
-        extractor = SDOCXExtractor(filepath)
-        data = extractor.extract()
-
-        output = {
-            "metadata": asdict(data.metadata),
-            "page_ids": data.page_ids,
-            "pages": [asdict(p) for p in data.pages],
-            "media_files": data.media_files,
-            "summary": {
-                "title": data.metadata.title,
-                "page_count": len(data.pages),
-                "total_layers": sum(len(p.layers) for p in data.pages),
-                "total_objects": sum(
-                    sum(len(l.objects) for l in p.layers) for p in data.pages
-                ),
-                "stroke_count": count_strokes(data),
-            },
-        }
-
-        print(json.dumps(output, indent=2, ensure_ascii=False))
-
+        output = extract_to_dict(args.sdocx)
+        text = json.dumps(output, indent=2, ensure_ascii=False)
+        if args.output:
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(text)
+        else:
+            print(text)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         import traceback

@@ -18,8 +18,6 @@ Examples:
     python3 plot_strokes.py --output-dir=output/ --all         # Output to specific directory
 """
 
-import json
-import subprocess
 import sys
 import os
 import argparse
@@ -30,17 +28,14 @@ from typing import Optional
 
 
 def extract_strokes(sdocx_path: str) -> Optional[dict]:
-    """Run sdocx_extractor.py and return parsed JSON."""
-    script_dir = os.path.dirname(os.path.abspath(__file__)) or "."
-    result = subprocess.run(
-        ["python3", os.path.join(script_dir, "sdocx_extractor.py"), sdocx_path],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(f"Error extracting {sdocx_path}: {result.stderr}", file=sys.stderr)
+    """Parse .sdocx and return extracted data dict."""
+    try:
+        from sdocx_extractor import extract_to_dict
+
+        return extract_to_dict(sdocx_path)
+    except Exception as e:
+        print(f"Error extracting {sdocx_path}: {e}", file=sys.stderr)
         return None
-    return json.loads(result.stdout)
 
 
 def iter_objects(objects: list):

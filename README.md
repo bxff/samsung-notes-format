@@ -10,16 +10,44 @@ This project documents the reverse engineering of Samsung Notes `.sdocx` files a
 
 ## Quick Start
 
-```bash
-# Extract strokes to JSON
-python3 sdocx_extractor.py <path_to_sdocx>
+### Install (editable, Python 3.11+)
 
-# Generate SVG visualization
-python3 sdocx_extractor.py file.sdocx | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-# ... generates output_strokes.svg
-"
+```bash
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+```
+
+### Unified CLI (`samsung-notes`)
+
+```bash
+# Extract to stdout or file
+samsung-notes extract note.sdocx
+samsung-notes extract note.sdocx -o extracted.json
+
+# GRBL G-code (plotter: pen up/down via Z). Default profile: bundled `grbl_plotter_z.toml`
+samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120 --flip-y
+
+# From saved JSON
+samsung-notes gcode --from-json extracted.json -o plot.gcode --width-mm 120
+
+# Batch: every `inbox/*.sdocx` → `outbox/<name>.gcode` (and optional SVG)
+mkdir -p inbox outbox
+cp mynote.sdocx inbox/
+samsung-notes inbox --also-svg
+```
+
+Copy and edit **[`samsung_notes_profiles/grbl_plotter_z.toml`](samsung_notes_profiles/grbl_plotter_z.toml)** for your machine, then pass `--profile /path/to/your.toml`.
+
+### Scripts without install
+
+```bash
+# Extract strokes to JSON (optional -o/--output file)
+python3 sdocx_extractor.py note.sdocx
+python3 sdocx_extractor.py note.sdocx -o extracted.json
+
+# SVG preview (first page)
+python3 plot_strokes.py note.sdocx --output-dir ./out
 ```
 
 ---
@@ -347,6 +375,10 @@ python3 plot_strokes.py
 |------|---------|
 | `sdocx_extractor.py` | Main extraction tool |
 | `plot_strokes.py` | Generate SVG/PNG visualizations |
+| `sdocx_gcode.py` | SDOCX/JSON → GRBL G-code (plotter Z) |
+| `cli.py` | `samsung-notes` CLI (`extract`, `gcode`, `inbox`) |
+| `pyproject.toml` | Package metadata and entry points |
+| `samsung_notes_profiles/` | Bundled machine profiles (TOML) |
 | `REVERSE_ENGINEERING_WORKFLOW.md` | Detailed RE methodology |
 | `sdocxFiles/` | Test SDOCX files |
 | `decompiled_source/` | Decompiled SDK and native libraries |
@@ -358,6 +390,7 @@ python3 plot_strokes.py
 - [x] Parse stroke point data from binary
 - [x] Accurate coordinate extraction (5.5 fixed-point)
 - [x] SVG export
+- [x] GRBL G-code export (plotter, Z pen lift; `samsung-notes gcode`)
 - [ ] Implement `.spi` file parsing for rendered strokes
 - [ ] Add `mediaInfo.dat` parser
 - [ ] Support text box content extraction

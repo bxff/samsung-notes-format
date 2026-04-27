@@ -2,6 +2,7 @@ decompiled_source
 com.samsung.android.app.notes_4.4.37.13-443713003_minAPI26(arm64-v8a)(nodpi)_apkmirror.com.apk
 
 # Python
+.venv/
 __pycache__/
 *.pyc
 .ruff_cache/
@@ -14,6 +15,15 @@ output.json
 *.png
 *.svg
 !Screenshot_*.jpg
+
+# Pipeline (optional local folders)
+outbox/
+inbox/
+
+# Packaging / local install
+build/
+dist/
+*.egg-info/
 
 # Temporary folders
 zippedFiles/

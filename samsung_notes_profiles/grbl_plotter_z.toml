@@ -1,0 +1,17 @@
+# Default GRBL plotter profile: pen up/down via Z (stepper Z).
+
+preamble = """
+G21
+G90
+G94
+"""
+
+pen_up_z = 5.0
+pen_down_z = 0.0
+travel_feed = 3000
+draw_feed = 1200
+z_feed = 600
+
+postamble = """
+G0 Z5.000
+"""
