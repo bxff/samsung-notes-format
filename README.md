@@ -10,16 +10,62 @@ This project documents the reverse engineering of Samsung Notes `.sdocx` files a
 
 ## Quick Start
 
-```bash
-# Extract strokes to JSON
-python3 sdocx_extractor.py <path_to_sdocx>
+### Install (editable, Python 3.11+)
 
-# Generate SVG visualization
-python3 sdocx_extractor.py file.sdocx | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-# ... generates output_strokes.svg
-"
+```bash
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+```
+
+### Unified CLI (`samsung-notes`)
+
+```bash
+# Extract to stdout or file
+samsung-notes extract note.sdocx
+samsung-notes extract note.sdocx -o extracted.json
+
+# GRBL G-code (plotter: pen up/down via Z). Default profile: bundled `grbl_plotter_z.toml`
+samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120
+
+# Y mirror is on by default (page top → typical plotter orientation). Turn off if needed:
+# samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120 --no-flip-y
+
+# Stroke order is on by default: ruled rows top-to-bottom, then X-bands (word-ish gaps) left-to-right with local greedy chaining; tiny marks attach to the nearest band. Raw JSON order: --no-writing-order
+samsung-notes gcode note.sdocx -o plot.gcode --width-mm 120
+
+# Pen-up XY travel (sum of jumps between strokes in mm). Compare row-height scales, then fix the winner in sdocx_gcode.RULED_LINE_ROW_HEIGHT_SCALE or pass --row-height-scale to gcode/plot/inbox:
+samsung-notes metrics note.sdocx
+samsung-notes metrics note.sdocx --sweep-row-scale 1.0 1.15 1.5 1.725 2.0
+samsung-notes metrics note.sdocx --optimize-row-scale
+samsung-notes metrics note.sdocx --optimize-row-scale 0.8:2.5:0.1
+
+# Same file, sweep other ordering knobs (each flag alone uses a built-in MIN:MAX:STEP). Combine with --row-height-scale 1.1 to fix the row grid while sweeping:
+samsung-notes metrics note.sdocx --row-height-scale 1.1 --optimize-x-gap-factor
+samsung-notes metrics note.sdocx --row-height-scale 1.1 --optimize-chain-y-weight --optimize-chain-back-x-weight
+# Available: --optimize-x-gap-factor, --optimize-chain-y-weight, --optimize-chain-back-x-weight, --optimize-intra-line-y-factor, --optimize-carriage-y-lines
+
+# From saved JSON
+samsung-notes gcode --from-json extracted.json -o plot.gcode --width-mm 120
+
+# Batch: every `inbox/*.sdocx` → `outbox/<name>.gcode` (and optional SVG)
+mkdir -p inbox outbox
+cp mynote.sdocx inbox/
+samsung-notes inbox --also-svg
+```
+
+Copy and edit **[`samsung_notes_profiles/grbl_plotter_z.toml`](samsung_notes_profiles/grbl_plotter_z.toml)** for your machine, then pass `--profile /path/to/your.toml`.
+
+### Scripts without install
+
+```bash
+# Extract strokes to JSON (optional -o/--output file)
+python3 sdocx_extractor.py note.sdocx
+python3 sdocx_extractor.py note.sdocx -o extracted.json
+
+# SVG preview (first page)
+python3 plot_strokes.py note.sdocx --output-dir ./out
+python3 plot_strokes.py note.sdocx --output-dir ./out --show-rows   # debug row clustering
 ```
 
 ---
@@ -347,6 +393,10 @@ python3 plot_strokes.py
 |------|---------|
 | `sdocx_extractor.py` | Main extraction tool |
 | `plot_strokes.py` | Generate SVG/PNG visualizations |
+| `sdocx_gcode.py` | SDOCX/JSON → GRBL G-code (plotter Z) |
+| `cli.py` | `samsung-notes` CLI (`extract`, `gcode`, `inbox`) |
+| `pyproject.toml` | Package metadata and entry points |
+| `samsung_notes_profiles/` | Bundled machine profiles (TOML) |
 | `REVERSE_ENGINEERING_WORKFLOW.md` | Detailed RE methodology |
 | `sdocxFiles/` | Test SDOCX files |
 | `decompiled_source/` | Decompiled SDK and native libraries |
@@ -358,6 +408,7 @@ python3 plot_strokes.py
 - [x] Parse stroke point data from binary
 - [x] Accurate coordinate extraction (5.5 fixed-point)
 - [x] SVG export
+- [x] GRBL G-code export (plotter, Z pen lift; `samsung-notes gcode`)
 - [ ] Implement `.spi` file parsing for rendered strokes
 - [ ] Add `mediaInfo.dat` parser
 - [ ] Support text box content extraction

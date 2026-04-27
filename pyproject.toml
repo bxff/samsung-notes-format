@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "samsung-notes-format"
+version = "0.1.0"
+description = "Extract Samsung Notes .sdocx strokes and export GRBL G-code"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+samsung-notes = "cli:main"
+
+[tool.setuptools]
+packages = ["samsung_notes_profiles"]
+py-modules = ["sdocx_extractor", "plot_strokes", "sdocx_gcode", "cli"]
+
+[tool.setuptools.package-data]
+samsung_notes_profiles = ["*.toml"]

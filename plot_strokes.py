@@ -9,6 +9,7 @@ Options:
     --all           Process all .sdocx files in sdocxFiles/ directory
     --output-dir    Output directory for generated files (default: current dir)
     --no-bbox       Don't draw bounding boxes
+    --show-rows     Overlay ruled-line row bands (debug; same grid as G-code stroke reordering)
     --stroke-width  Stroke width in pixels (default: 2)
 
 Examples:
@@ -18,8 +19,6 @@ Examples:
     python3 plot_strokes.py --output-dir=output/ --all         # Output to specific directory
 """
 
-import json
-import subprocess
 import sys
 import os
 import argparse
@@ -30,17 +29,14 @@ from typing import Optional
 
 
 def extract_strokes(sdocx_path: str) -> Optional[dict]:
-    """Run sdocx_extractor.py and return parsed JSON."""
-    script_dir = os.path.dirname(os.path.abspath(__file__)) or "."
-    result = subprocess.run(
-        ["python3", os.path.join(script_dir, "sdocx_extractor.py"), sdocx_path],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print(f"Error extracting {sdocx_path}: {result.stderr}", file=sys.stderr)
+    """Parse .sdocx and return extracted data dict."""
+    try:
+        from sdocx_extractor import extract_to_dict
+
+        return extract_to_dict(sdocx_path)
+    except Exception as e:
+        print(f"Error extracting {sdocx_path}: {e}", file=sys.stderr)
         return None
-    return json.loads(result.stdout)
 
 
 def iter_objects(objects: list):
@@ -51,12 +47,76 @@ def iter_objects(objects: list):
             yield from iter_objects(obj["children"])
 
 
+def _append_row_debug_overlay(
+    svg_lines: list[str],
+    page: dict,
+    width: float,
+    height: float,
+    *,
+    row_height_scale: float | None = None,
+) -> None:
+    """Draw bands + dashed lines for ruled-line row clusters (see ``row_cluster_indices_for_page``)."""
+    try:
+        from sdocx_gcode import (
+            collect_stroke_polys_and_bboxes_px_for_page,
+            row_cluster_indices_for_page,
+            uniform_row_pitch_px_for_page,
+        )
+    except ImportError as e:
+        print(f"Warning: row overlay needs sdocx_gcode: {e}", file=sys.stderr)
+        return
+
+    clusters = row_cluster_indices_for_page(
+        page, row_height_scale=row_height_scale
+    )
+    _, boxes = collect_stroke_polys_and_bboxes_px_for_page(page)
+    if not clusters:
+        return
+    pitch = uniform_row_pitch_px_for_page(
+        page, row_height_scale=row_height_scale
+    )
+    colors = [
+        "#ff4d00",
+        "#00a86b",
+        "#6b2cff",
+        "#c200c2",
+        "#0088cc",
+        "#cc5500",
+        "#b38f00",
+        "#006ecd",
+    ]
+    svg_lines.append(
+        '  <g id="writing-order-rows" pointer-events="none" shape-rendering="crispEdges">'
+    )
+    for ri, idxs in enumerate(clusters):
+        yc = sum(0.5 * (boxes[i][1] + boxes[i][3]) for i in idxs) / len(idxs)
+        y0 = yc - 0.5 * pitch
+        c = colors[ri % len(colors)]
+        svg_lines.append(
+            f'    <rect x="0" y="{y0:.2f}" width="{width}" height="{pitch:.2f}" '
+            f'fill="{c}" opacity="0.08"/>'
+        )
+        svg_lines.append(
+            f'    <line x1="0" y1="{yc:.2f}" x2="{width}" y2="{yc:.2f}" '
+            f'stroke="{c}" stroke-width="1.25" stroke-dasharray="12 6" opacity="0.92"/>'
+        )
+        label_y = min(yc + 4.0, height - 4.0, y0 + pitch - 2.0)
+        svg_lines.append(
+            f'    <text x="8" y="{label_y:.2f}" font-size="11" '
+            f'font-family="Helvetica,Arial,sans-serif" fill="{c}" stroke="white" '
+            f'stroke-width="0.35" paint-order="stroke">r{ri} ({len(idxs)})</text>'
+        )
+    svg_lines.append("  </g>")
+
+
 def generate_svg(
     data: Optional[dict],
     output_path: str,
     show_bbox: bool = True,
     stroke_width: float = 2.0,
     stroke_color: Optional[str] = None,
+    show_rows: bool = False,
+    row_height_scale: float | None = None,
 ) -> bool:
     """Generate SVG from extracted stroke data. Returns True on success."""
     if not data or not data.get("pages"):
@@ -76,6 +136,15 @@ def generate_svg(
         f"  <!-- Generated from Samsung Notes .sdocx file -->",
         '  <rect fill="white" width="100%" height="100%"/>',
     ]
+
+    if show_rows:
+        _append_row_debug_overlay(
+            svg_lines,
+            page,
+            float(width),
+            float(height),
+            row_height_scale=row_height_scale,
+        )
 
     # Use single color if specified, otherwise cycle through palette
     colors = (
@@ -156,6 +225,8 @@ def process_file(
     output_dir: str,
     show_bbox: bool = True,
     stroke_width: float = 2.0,
+    show_rows: bool = False,
+    row_height_scale: float | None = None,
 ) -> bool:
     """Process a single SDOCX file and generate SVG."""
     print(f"\nProcessing: {sdocx_path}")
@@ -178,7 +249,14 @@ def process_file(
 
     # Generate SVG
     svg_path = get_output_path(sdocx_path, output_dir, ".svg")
-    if generate_svg(data, svg_path, show_bbox=show_bbox, stroke_width=stroke_width):
+    if generate_svg(
+        data,
+        svg_path,
+        show_bbox=show_bbox,
+        stroke_width=stroke_width,
+        show_rows=show_rows,
+        row_height_scale=row_height_scale,
+    ):
         print(f"  SVG: {svg_path}")
         return True
     return False
@@ -222,6 +300,18 @@ def main():
         type=float,
         default=2.0,
         help="Stroke width in pixels (default: 2)",
+    )
+    parser.add_argument(
+        "--show-rows",
+        action="store_true",
+        help="Overlay ruled-line row bands (same grid as G-code stroke reordering)",
+    )
+    parser.add_argument(
+        "--row-height-scale",
+        type=float,
+        default=None,
+        metavar="S",
+        help="Ruled row pitch multiplier for --show-rows (default: sdocx_gcode.RULED_LINE_ROW_HEIGHT_SCALE)",
     )
 
     args = parser.parse_args()
@@ -272,6 +362,8 @@ def main():
             args.output_dir,
             show_bbox=not args.no_bbox,
             stroke_width=args.stroke_width,
+            show_rows=args.show_rows,
+            row_height_scale=args.row_height_scale,
         ):
             success_count += 1
 
