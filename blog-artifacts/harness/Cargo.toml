@@ -1,0 +1,13 @@
+# Harness that exercises twangodev/sdocx's real published decoder.
+# Clone https://github.com/twangodev/sdocx and point this path at its crate.
+[package]
+name = "sdocx-compare-harness"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sdocx = { path = "../../../sdocx-repo/crates/sdocx" }
+
+[[bin]]
+name = "sdocx-compare-harness"
+path = "main.rs"
