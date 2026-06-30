@@ -27,3 +27,7 @@ Older research files, kept for reference rather than as the canonical implementa
 - `sdocxFiles/`, `extracted_sdocx/`: sample notes.
 - `blog-artifacts/`: figures and the comparison harness for the write-up.
 - `*.png`, `Screenshot_*.jpg`: leftover render and comparison artifacts from the research, kept as a rough record of progress rather than cleaned out (`example.png` is the one used above).
+
+## Notes
+
+Independent implementation for interoperability and research. The repo contains no Samsung binaries or decompiled code, only original code and the documented format. Samsung Notes is a trademark of Samsung Electronics. The code here is MIT-licensed (see [LICENSE](LICENSE)).
