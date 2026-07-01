@@ -38,7 +38,7 @@ X0, Y0 = 24, 52
 GAP = 46         # space the offset arrow spans, between header and payload
 MONO = lib.MONO
 
-W = X0 + LW + RW + 26
+W = X0 + LW + RW + 70
 S = lib.svg_open(W, 200)
 
 S.append(lib.text(X0, 24, "one object in a .page file", size=12))
@@ -71,6 +71,9 @@ S.append(f'<line x1="{ax}" y1="{offset_row_y:.0f}" x2="{ax}" y2="{payload_top+RH
 S.append(f'<line x1="{ax}" y1="{payload_top+RH/2:.0f}" x2="{X0+LW+RW+3}" y2="{payload_top+RH/2:.0f}" stroke="#000" stroke-width="0.7"/>')
 # arrowhead
 S.append(f'<path d="M {X0+LW+RW+3} {payload_top+RH/2:.0f} l 6 -3 l 0 6 z" fill="#000"/>')
+S.append(lib.text(ax + 6, (header_bottom + payload_top) / 2 + 4, "offset", size=9))
+S.append(lib.text(ax + 6, (header_bottom + payload_top) / 2 + 15, "skips", size=9))
+S.append(lib.text(ax + 6, (header_bottom + payload_top) / 2 + 26, "attrs", size=9))
 
 S.append(lib.text(X0, payload_top - 8, "stroke payload", size=11))
 y = payload_top
@@ -81,8 +84,8 @@ row(y, DELTA[0], DELTA[1], weight=1.4)
 y += RH
 
 cap_y = y + 26
-S.append(lib.text(X0, cap_y, "the header comes straight off the decompiled Java; the offset field jumps"))
-S.append(lib.text(X0, cap_y + 14, "past the object's attributes to the delta stream the rest of this post decodes."))
+S.append(lib.text(X0, cap_y, "the header comes off the decompiled Java; the offset field points"))
+S.append(lib.text(X0, cap_y + 14, "past the attributes to the delta stream this post decodes."))
 
 H = cap_y + 22
 S[0] = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H:.0f}" '
