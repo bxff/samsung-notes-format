@@ -32,8 +32,6 @@ Older research files, kept for reference rather than as the canonical implementa
 
 Independent implementation for interoperability and research. The repo contains no Samsung binaries or decompiled code, only original code and the documented format. Samsung Notes is a trademark of Samsung Electronics.
 
-**Used by**
-
 These projects cite the format notes or use the sample files:
 
 - [Obsidian Importer](https://github.com/obsidianmd/obsidian-importer/blob/3.2.0/src/formats/samsung-notes/parse.ts#L1-L9): Obsidian's official importer cites the format notes for its `.sdocx` parser. It imports handwriting as SVG.
